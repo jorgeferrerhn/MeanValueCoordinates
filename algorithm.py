@@ -6,4 +6,6 @@ img = cv.imread('img/test1.jpg')
 px = img.shape
 
 print(px)
-print(cv.__version__)
+
+cv.imshow("Image",img)
+cv.waitKey(0)
