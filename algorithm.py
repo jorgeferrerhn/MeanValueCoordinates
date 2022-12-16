@@ -3,9 +3,11 @@ import numpy as np
 
 img = cv.imread('img/test1.jpg')
 
-px = img.shape
+hwc = img.shape
 
-print(px)
+
+for px in img:
+    print(px)
 
 cv.imshow("Image",img)
 cv.waitKey(0)
