@@ -40,14 +40,12 @@ def BuildMVC(edges, px):
     # Lista contenente tutti i lamda del targetPx
     myLamdas = []
     
-    # Per ogni pixel della foto calcola lamda per ogni pixel del bordo
     '''
     for p in edges:
-        p_1 = edges[edges.index(p) - 1]
-        p1 = edges[edges.index(p) + 1]
+        # Trovare pixel adiacente che appartiene all'edge
 
         print("P-1: ", p_1, "P1: ", p1)
-        '''
+    '''
 
         # lamda_edge(px) = w_i/1 (?) dove w_i = tan()
         # a1
@@ -55,8 +53,10 @@ def BuildMVC(edges, px):
     return
 
 Edges = list(BuildEdge())
+print("Unsorted: ", Edges)
 # Bisogna vedere come ordinare la lista
 Edges.sort()
+print("Sorted: ",Edges)
 
 '''
 y = 0
