@@ -2,11 +2,11 @@ import cv2 as cv
 import numpy as np
 import math
 
-img = cv.imread('source_pixel.png')
-target = cv.imread('target_pixel.png')
+img = cv.imread('source_02_edge.png')
+target = cv.imread('target_02.png')
 z = np.array([0,0,0])       # np.array.all() ritorna false se c'e' almeno un zero
-offsetY = 5                 # Offset usato per passare al sistema di riferimento giusto
-offsetX = 5                 # Offset usato per passare al sistema di riferimento giusto
+offsetY = 84                # Offset usato per passare al sistema di riferimento giusto
+offsetX = 204                 # Offset usato per passare al sistema di riferimento giusto
 
 # TODO: Vengono creati due dizionari diversi per i px degli edge e del source patch. Teoricamente si potrebbe usare un unico dict e in una lista separata vengono mantenute le coordinate dei px dell'edge
 
@@ -268,5 +268,6 @@ BuildDiffs(dictEdgesSource)
 Clone(dictSource, listEdges, dictEdgesSource)
 
 cv.imshow("Image",img)
+cv.resizeWindow("Image", 150,150)
 cv.imshow("Target", target)
 cv.waitKey(0)
