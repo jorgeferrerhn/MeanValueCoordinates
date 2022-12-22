@@ -2,33 +2,26 @@ import cv2 as cv
 import numpy as np
 import math
 
-# dictLamda = dict()
-# pxSource = dict()
-# pxTarget = dict()       # Dict con new coords relativa al target + intensity +
-# listEdgesTarget = []    # Lista con le nuove coordinate dell'Edge
-# diffsEdges = []    # Dict con i diff per ogni pxEdge
-
-###########
 img = cv.imread('source_pixel.png')
-z = np.array([0,0,0]) # np.array.all() ritorna false se c'e' almeno un zero
 target = cv.imread('target_pixel.png')
-dictEdgesSource = dict()
-dictSource = dict()
-offsetY = 5
-offsetX = 5
+z = np.array([0,0,0])       # np.array.all() ritorna false se c'e' almeno un zero
+offsetY = 5                 # Offset usato per passare al sistema di riferimento giusto
+offsetX = 5                 # Offset usato per passare al sistema di riferimento giusto
 
-# Funzione che ritorna l'insieme delle coordinate dei pixel dell'edge
+# TODO: Vengono creati due dizionari diversi per i px degli edge e del source patch. Teoricamente si potrebbe usare un unico dict e in una lista separata vengono mantenute le coordinate dei px dell'edge
+
+# Funzione che costruisce il dict usando ogni pixel dell'edge come key, e lo inizializza a []
 def BuildEdge():
     dictEdgesSource = dict()
-    # Iterazione su ogni pixel
+
+    # Iterazione su ogni pixel di img
     Y = 0
     for row in img:
         X = 0
         for px in row:
-            # Se il pixel è colorato, controlla tutti i suoi adiacenti
+            # Se il pixel è colorato, controlla tutti i suoi adiacenti (N,E,S,W)
             if not (px == z).all():
-
-                # Coordinate dei pixel adiacenti
+                # Coordinate dei pixel adiacenti (N,E,S,W)
                 coords = [(Y-1,X),(Y+1,X),(Y,X-1),(Y,X+1)]
 
                 # Per ogni adiacente controlla prima se appartiene al bordo del file
@@ -39,31 +32,55 @@ def BuildEdge():
                     
                     # Se non appartiene al bordo e il pixel adiacente è [0,0,0] aggiungi agli edges
                     if notBorder and (img[adiacentY][adiacentX] == z).all():
-                        # print("Pixel: ",Y,X,"| Empty adiacent: ",adiacentCoord[0],adiacentCoord[1])
                         # Salva come edge
                         dictEdgesSource[(Y,X)] = []
+                        # Aggiungo l'intensitá del pixel dell'edge
+                        dictEdgesSource[(Y,X)] = [tuple(img[Y][X])]
 
                     # Se il pixel appartiene al bordo aggiungi automaticamente (abbiamo già controllato che il pixel è colorato)
                     elif ((adiacentY == -1 or adiacentX == -1 ) or (adiacentY == img.shape[0] or adiacentX == img.shape[1])):
                         dictEdgesSource[(Y,X)] = []
+                        # Aggiungo l'intensitá del pixel dell'edge
+                        dictEdgesSource[(Y,X)] = [tuple(img[Y][X])]
             X+=1
         Y+=1
-        
     return dictEdgesSource
 
-def checkCC(px, pred, l, listEdges):
-    # Calcolo da differenza delle coordinate tra il px in cui sono e il pixel adiacente che ho appena aggiunto cosí posso sapere in che modo muovermi CC
+# Funzione che ritorna un dizionario contenente per ogni px dell'edge, i suoi px adiacenti
+def BuildEdgeAdiacent(dictEdges, listEdges):
+    Y,X = listEdges[0][0], listEdges[0][1]
+    l = len(listEdges)  # Variabile utilizzata per la chiamata ricorsiva di CheckCC()
+
+    # Appena inizio a cercare gli adiacenti devo considerare il caso particolare di quando sto analizzando il primo px in assoluto
+    # In questo caso devo controllare in senso ORARIO dove sta il suo adiacente, per poi considerarlo come predecessore
+    adiacentCoords = [(Y-1,X), (Y-1,X+1), (Y, X+1), (Y+1, X+1), (Y+1,X), (Y+1,X-1), (Y, X-1), (Y-1, X-1)]
+    for A in adiacentCoords:
+        if A in listEdges:
+            dictEdges[(Y,X)].append(A)
+            pred = A    # Imposto il px trovato come predecessore
+            break
+    # Inizo le chiamate ricorsive per "camminare" lungo l'edge e trovarmi tutti gli adiacenti
+    CheckCC((Y,X), pred, l, listEdges)
+    return dictEdges
+
+# Funzione ricorsiva che "percorre" in senso antiorario tutti i pixel dell'edge e aggiunge al loro valore nel dict il loro adiacente
+def CheckCC(px, pred, l, listEdges):
+    # Calcolo da differenza delle coordinate tra il px in cui sono e il pixel adiacente che ho appena aggiunto in questo modo capisco
+    # da dove iniziare a camminare in senso antiorario
     Y,X = px[0], px[1]
     pY, pX = pred[0], pred[1]
-    nextPx = (0,0)
 
+    # Coordinate del pixel da cui inizio a camminare relative al px che sto analizzando (px)
     start = (pY - Y, pX - X)
-
-    dictEdgesSource[px] = [tuple(img[Y][X])]
-
+    
+    # Controllo se il pixel analizzato in precendenza sia stato inserito nel dict(px) come mio primo adiacente
     if pred not in dictEdgesSource[px]:
         dictEdgesSource[px].append(pred)
 
+    # TODO: Non so se é il miglior modo ma per ora funziona :D
+    # A secondo di dove sia il mio pixel di inizo, incomincio a camminare in senso antiorario
+    # Mi fermo al primo pixel che fa parte dell'edge e lo aggiungo come adiacente
+    # Imposto come successivo px da analizzare il mio adiacente appena trovato
     match start:
         case (-1, 0):
             for adiacent in [(Y-1, X-1), (Y, X-1), (Y+1,X-1), (Y+1, X), (Y+1,X+1), (Y, X+1), (Y-1, X+1)]:
@@ -112,104 +129,16 @@ def checkCC(px, pred, l, listEdges):
                 if adiacent in listEdges:
                     dictEdgesSource[px].append(adiacent)
                     nextPx = adiacent
-                    break
+                    break   
+    l-=1        # Variabile utilizzata per fermare la ricorsivitá
+    pred = px   # Imposto il pixel in cui sono come predecessore per la prossima chiamata ricorsiva
     
-    # print("PX:", px, "pred:", pred, "Start:", start, "Next:", nextPx, "\n")
-    l-=1
-    pred = px
+    # Controllo se devo fare la chiamata ricorsiva: se ho fatto tutto il giro dei px dell'edge mi posso fermare
     if l > 0:
-        checkCC(nextPx, pred, l, listEdges)
+        # Chiamata ricorsiva
+        CheckCC(nextPx, pred, l, listEdges)
     else:
         return
-    
-
-# Funzione che ritorna un dizionario contenente per ogni px dell'edge, i suoi px adiacenti
-listEdges = list(dictEdgesSource.keys())
-
-def BuildEdgeAdiacent(dictEdges, listEdges):
-    Y,X = listEdges[0][0], listEdges[0][1]
-    l = len(listEdges)
-
-    # Primo elemento
-    adiacentCoords = [(Y-1,X), (Y-1,X+1), (Y, X+1), (Y+1, X+1), (Y+1,X), (Y+1,X-1), (Y, X-1), (Y-1, X-1)]
-    for A in adiacentCoords:
-        if A in listEdges:
-            dictEdges[(Y,X)].append(A)
-            pred = A
-            break
-    checkCC((Y,X), pred, l, listEdges)
-    return dictEdges
-
-'''
-        # Intesitá del px Edge
-        dictEdges[edge] = [img[Y][X]]  # Intensitá
-        # adiacentCoords = [(Y-1,X), (Y,X-1), (Y+1,X), (Y,X+1)]
-        adiacentCoords = [(Y-1, X), (Y-1, X-1), (Y, X-1), (Y+1,X-1),(Y+1, X), (Y+1,X+1), (Y, X+1), (Y-1, X+1)]
-        
-        bufferAdiacent = []
-        for adiacent in adiacentCoords:
-            if adiacent in dictEdges:      
-                # dictEdges[edge].append(adiacent)    # Adiacente che appartiene all'Edge
-                bufferAdiacent.append(adiacent)
-
-        # Facciamo una selezione dei corretti adiacenti
-        for A in bufferAdiacent:
-            if A in [(Y-1,X),(Y,X-1),(Y+1,X),(Y, X+1)]:
-                dictEdges[edge].append(A)
-        
-        # Casi
-        l = len(dictEdgesp[edge])
-        match l:
-            # Non ci sta nulla sugli assi
-            case 0:
-                s
-        '''
-
-'''
-        if len(dictEdges[edge]) < 3 and len(dictEdges[edge]):
-            (startY, startX) = (dictEdges[edge][1][0], dictEdges[edge][1][1])
-            i = bufferAdiacent.index((startY,startX))
-            dictEdges[edge].append(bufferAdiacent[i+1])
-        '''
-
-        # print("\nQUI BUFFER ADIACENT: ",str(bufferAdiacent))
-'''        
-        if len(bufferAdiacent) == 2:
-            dictEdges[edge].append(bufferAdiacent[0])
-            dictEdges[edge].append(bufferAdiacent[1])
-
-        if len(bufferAdiacent) > 2:
-            contRow,contCol = 0,0
-            
-            for A in bufferAdiacent:
-
-                if X == A[1]: 
-                    contRow += 1
-
-                if Y == A[0]:
-                    contCol += 1
-
-            if contRow == 2: #stessa riga
-                print("DICT EDGE: ",str(dictEdges[edge]))
-                print("DICT EDGE TYPE: ",type(dictEdges[edge]))
-
-                dictEdges[edge].append((Y,X-1))
-                dictEdges[edge].append((Y,X+1))
-
-            if contCol == 2: #stessa colonna
-                print("DICT EDGE: ",str(dictEdges[edge]))
-
-                dictEdges[edge].append((Y-1,X))
-                dictEdges[edge].append((Y+1,X))
-
-        '''
-        # print(edge, ":", dictEdges[edge][1:])
-        
-
-    # Edges dict con chiave le coordinate dei px dell'edge e con values le coordinate degli adiacenti del relativo pixel
-    
-
-# dictEdges = BuildEdgeAdiacent(listEdges)    # Coordinate pxEdge + intesitá + coords px adiacenti che fanno parte dell'edge
 
 # Funzione che ritorna una lista delle lamda calcolate per px su ogni pixel dell'edge
 def BuildLamda(dictEdges, px):
@@ -218,17 +147,17 @@ def BuildLamda(dictEdges, px):
     
     for edge in dictEdges:
         # Gli angoli vengono usati tutti 2 volte max, quindi possiamo fare un buffer in cui salviamo gli angoli che devono essere ancora utilizzati per la seconda volta
-        # TODO: provare ad implementare un "buffer" per gli angoli
-        # print("\nQUI: ",str(dictEdges[edge][1]))
+        # TODO: Provare ad implementare un "buffer" per gli angoli
         p = edge
         p_1 = dictEdges[edge][1]
         p1 = dictEdges[edge][2]
 
         # Angoli usati nella formula di wi
-        # TODO: provare ad usare angoli noti per vederne il risultato
+        # TODO: Non sono sicuro che vengano calcolati correttamente
         a_1 = (math.atan2(p[0] - px[0], p[1] - px[1])) - (math.atan2(p_1[0] - px[0], p_1[1] - px[1]))
         a1 = (math.atan2(p1[0] - px[0], p1[1] - px[1])) - (math.atan2(p[0] - px[0], p[1] - px[1]))
 
+        # Possibile modo di correggere gli angoli: secondo il paper l'angolo deve sempre essere 0 < a < π (in radianti)
         # if a1 < 0:
         #     # Togliere a un angolo di 360 a1
         #     a1 = (2*math.pi) + a1
@@ -238,19 +167,15 @@ def BuildLamda(dictEdges, px):
 
         # TODO: Provare ad usare Numpy per la distanza
         wi = (math.tan(a_1/2) + math.tan(a1/2))/math.dist(p, px)
-        # print(a1,a_1)
-        # print(wi,":",math.tan(a_1/2), math.tan(a1/2))
-        # print("\t",a_1, a1, "\n")
         myLamdas.append(wi)
-
-        # dictLamda[(px,p)] = wi
     return myLamdas
 
-
+# Funzione che costruisce un dict con tutti i px del source patch (ma non dell'edge) con i valori di intensitá e di lamda
 def BuildMVC(dictEdgesSource):
     dictSource = dict()
-    Y = 0
 
+    # Itera su tutti i px del source patch
+    Y = 0
     for row in img:
         X = 0
         for px in row:
@@ -264,79 +189,83 @@ def BuildMVC(dictEdgesSource):
                     dictSource[(Y,X)].append(BuildLamda(dictEdgesSource, (Y,X)))
             X+=1
         Y+=1
-
     return dictSource
 
-# Crea il dict con tutti i px edge
-dictEdgesSource = BuildEdge()
-listKeys = list(dictEdgesSource.keys())
-# Aggiunge al dict gli adiacenti per ogni px edge
-dictEdgesSource = BuildEdgeAdiacent(dictEdgesSource, listKeys)
-
-# for el in dictEdgesSource:
-#     print(el,":", dictEdgesSource[el])
-# Costruisce dict con pixel del source con intensitá e mylamdas
-dictSource = BuildMVC(dictEdgesSource)
-
-
-# Clonare foto sopra al target
-# Calcola le nuove coordinate dei pxEdge relative al target e calcola diffs
-for edge in dictEdgesSource:
-    targetY = edge[0] + offsetY
-    targetX = edge[1] + offsetX
-    targetRGB = target[targetY][targetX]
-
-    # diff = tuple(target[targetY][targetX]) - dictEdgesSource[edge][0]
-    RSource, GSource, BSource = int(dictEdgesSource[edge][0][0]), int(dictEdgesSource[edge][0][1]), int(dictEdgesSource[edge][0][2])
-    RTarget, GTarget, BTarget = int(targetRGB[0]), int(targetRGB[1]), int(targetRGB[2])
-
-    diff = [RTarget - RSource, BTarget - BSource, GTarget - GSource]
-
-    dictEdgesSource[edge].insert(1, diff) # secondo valore in dictEdgesSource é diff
-
-# Genera un dict con le nuove coordinate dei pixel interni
-# for px in pxSource:
-    #pxTarget[(px[0] + pasteY, px[1] + pasteX)] = pxSource[px]
-#for px in listEdgesTarget:
-    # Salva intensitá
-    #pxTarget[(px[0], px[1])] = dictEdges[(px[0]- pasteY, px[1] - pasteX)][0]
-
-def Interpolant(px, dictEdgesSource, dictSource, listKeys):
-    # R = 0
-    R = [0,0,0]
+# Funzione che aggiunge ad ogni px dell'edge la differenza di intensitá con il px "sotto" del target patch
+def BuildDiffs(dictEdgesSource):
     for edge in dictEdgesSource:
-        # Indice della chiave dell'edge
-        # La lista lamda, nel pxSource, confronti lo stesso indice
-        i = listKeys.index(edge)
+        targetY = edge[0] + offsetY
+        targetX = edge[1] + offsetX
+        targetRGB = target[targetY][targetX]
+
+        # TODO: Controllare che succede quando la differenza causa un numero negativo
+        # Converto in int() per problemi di overflow: i px vengono salvati con valori fino a 255, ma quando vado a fare le differenze potrebbero esserci valori negativi (?)
+        RSource, GSource, BSource = int(dictEdgesSource[edge][0][0]), int(dictEdgesSource[edge][0][1]), int(dictEdgesSource[edge][0][2])
+        RTarget, GTarget, BTarget = int(targetRGB[0]), int(targetRGB[1]), int(targetRGB[2])
+
+        # Calcolo la differenza di intensitá dei px
+        diff = [RTarget - RSource, BTarget - BSource, GTarget - GSource]
+
+        # Inserisco il valore di diff ESATTAMENTE nella seconda posizione della lista
+        dictEdgesSource[edge].insert(1, diff) # secondo valore in dictEdgesSource é diff
+    return
+
+# TODO: Potrebbe essere sbagliato il modo in cui viene calcolato
+# Funzione che calcola il valore dell'interpolatore per un px dato
+def Interpolant(px, dictEdgesSource, dictSource, listEdges):
+    R = [0,0,0] # Valore dell'interpolatore per tutti e 3 i canali (R,G,B)
+
+    # Interpolatore va calcolato considerando tutti i px dell'edge
+    for edge in dictEdgesSource:
+        # Dato che le lamda sono state inserite e calcolate considerando l'ordine dei px dell'edge nel loro dict
+        # Posso semplicemente trovare il valore della lamda corretto controllando l'indice
+        i = listEdges.index(edge)    # Indice della chiave dell'edge
         lamdaEdge = dictSource[px][1][i]
         edgeDiff = dictEdgesSource[edge][1]
 
-        # R += lamdaEdge * edgeDiff
+        # Calcola il valore dell'interpolatore per i 3 canali
         R[0] += lamdaEdge * edgeDiff[0]
         R[1] += lamdaEdge * edgeDiff[1]
         R[2] += lamdaEdge * edgeDiff[2]
-        
     return R
 
-for px in dictSource:
-    if not px in dictEdgesSource:
-        R = Interpolant(px, dictEdgesSource, dictSource, listKeys)
-    else:
-        # TODO: Per edges basta sommare tutti i diff degli edge
-        # R = 0
-        R = [0,0,0]
-        for edge in dictEdgesSource:
-            # R += dictEdgesSource[edge][1]
-            R[0] += dictEdgesSource[edge][1][0]
-            R[1] += dictEdgesSource[edge][1][1]
-            R[2] += dictEdgesSource[edge][1][2]
+# Funzione che calcola il valore della nuova intensitá del px
+def Clone(dictSource, listEdges, dictEdgesSource):
+    # Loop su ogni px del source patch
+    for px in dictSource:
+        # Controlla se il px appartiene all'edge perché i px dell'edge vengono calcolati in modo diverso
+        if not px in listEdges:
+            # Viene calcola il valore dell'interpolatore
+            R = Interpolant(px, dictEdgesSource, dictSource, listEdges)
+        else:
+            R = [0,0,0]
+            for edge in listEdges:
+                R[0] += dictEdgesSource[edge][0][0]
+                R[1] += dictEdgesSource[edge][0][1]
+                R[2] += dictEdgesSource[edge][0][2]
 
-    newInt = [(dictSource[px][0][0] + R[0])%255, (dictSource[px][0][1] + R[1])%255, (dictSource[px][0][2] + R[2])%255]
-    target[px[0] + offsetY][px[1] + offsetX] = newInt
+        # Valore della nuova intensitá
+        newInt = [(dictSource[px][0][0] + R[0])%255, (dictSource[px][0][1] + R[1])%255, (dictSource[px][0][2] + R[2])%255]
+        # Sostituisce l'intensitá del px target con il nuovo valore calcolato
+        target[px[0] + offsetY][px[1] + offsetX] = newInt
 
-# Modifica la foto Target
-#for px in pxSource:
-#    target[pasteY + px[0]][pasteX + px[1]] = pxSource[px][0]
+# Crea il dict con tutti i px edge
+dictEdgesSource = BuildEdge()
+
+# Lista (ordinata come il dict) delle coordinate dei px dell'edge
+listEdges = list(dictEdgesSource.keys())
+
+# Aggiunge al dict gli adiacenti per ogni px edge
+dictEdgesSource = BuildEdgeAdiacent(dictEdgesSource, listEdges)
+
+# Costruisce dict con pixel del source con intensitá e mylamdas
+dictSource = BuildMVC(dictEdgesSource)
+
+# Calcola le diff sull'edge
+BuildDiffs(dictEdgesSource)
+
+# Clona il source patch sul target
+Clone(dictSource, listEdges, dictEdgesSource)
 
 cv.imshow("Image",img)
 cv.imshow("Target", target)
