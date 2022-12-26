@@ -2,11 +2,16 @@ import cv2 as cv
 import numpy as np
 import math
 
+
+# img = cv.imread('source_pixel.png')
+# target = cv.imread('target_02_pixel.png')
 img = cv.imread('source_02_edge.png')
 target = cv.imread('target_02.png')
 z = np.array([0,0,0])       # np.array.all() ritorna false se c'e' almeno un zero
-offsetY = 84                # Offset usato per passare al sistema di riferimento giusto
-offsetX = 204                 # Offset usato per passare al sistema di riferimento giusto
+# offsetY = 5                # Offset usato per passare al sistema di riferimento giusto
+# offsetX = 5               # Offset usato per passare al sistema di riferimento giusto
+offsetY = 84               # Offset usato per passare al sistema di riferimento giusto
+offsetX = 204              # Offset usato per passare al sistema di riferimento giusto
 
 # TODO: Vengono creati due dizionari diversi per i px degli edge e del source patch. Teoricamente si potrebbe usare un unico dict e in una lista separata vengono mantenute le coordinate dei px dell'edge
 
@@ -154,19 +159,50 @@ def BuildLamda(dictEdges, px):
 
         # Angoli usati nella formula di wi
         # TODO: Non sono sicuro che vengano calcolati correttamente
-        a_1 = (math.atan2(p[0] - px[0], p[1] - px[1])) - (math.atan2(p_1[0] - px[0], p_1[1] - px[1]))
-        a1 = (math.atan2(p1[0] - px[0], p1[1] - px[1])) - (math.atan2(p[0] - px[0], p[1] - px[1]))
+        #alpha-1
+        angoli = []
+        prima = math.atan2(p[0] - px[0], p[1] - px[1])
+        seconda = math.atan2(p_1[0] - px[0], p_1[1] - px[1])
+
+        angoli.append(prima)
+        angoli.append(seconda)
+
+        for alpha in angoli: 
+            if alpha < 0:
+                prima += 2*math.pi
+                seconda += 2*math.pi
+                break
+
+    
+         #alpha1
+        angoli = []
+        terza = math.atan2(p1[0] - px[0], p1[1] - px[1])
+        quarta = math.atan2(p[0] - px[0], p[1] - px[1])
+
+        angoli.append(terza)
+        angoli.append(quarta)
+
+        for alpha in angoli: 
+            if alpha < 0:
+                terza += 2*math.pi
+                quarta += 2*math.pi
+                break
+
+        a_1 = prima - seconda
+        a1 = terza - quarta
+        # a_1 = math.atan2(px[0] - p[0], px[1] - p[1]) - math.atan2(px[0] - p_1[0], px[1] - p_1[1])
+        # a1 = math.atan2(px[0] - p1[0], px[1] - p1[1]) - math.atan2(px[0] - p[0], px[1] - p[1])
 
         # Possibile modo di correggere gli angoli: secondo il paper l'angolo deve sempre essere 0 < a < π (in radianti)
         # if a1 < 0:
         #     # Togliere a un angolo di 360 a1
-        #     a1 = (2*math.pi) + a1
+        #     a1 += 2*math.pi
         # if a_1 < 0:
         #     # Togliere a un angolo di 360 a1
-        #     a_1 = (2*math.pi) + a_1
+        #     a_1 += 2*math.pi
 
         # TODO: Provare ad usare Numpy per la distanza
-        wi = (math.tan(a_1/2) + math.tan(a1/2))/math.dist(p, px)
+        wi = (abs(math.tan(a_1*0.5)) + abs(math.tan(a1*0.5)))/math.dist(p, px)
         myLamdas.append(wi)
     return myLamdas
 
@@ -184,9 +220,10 @@ def BuildMVC(dictEdgesSource):
                 # Se pixel non é nella negli edge
                 if not (Y,X) in dictEdgesSource:
                     # Costruisco l'MVC per ogni pixel dell'area da copiare (interna all'edge)
-                    dictSource[(Y,X)] = [img[Y][X]]
+                    dictSource[(Y,X)] = [tuple(img[Y][X])]
                     # (Y,X): [intensitá, [mylamdas]]
                     dictSource[(Y,X)].append(BuildLamda(dictEdgesSource, (Y,X)))
+                    # print((Y,X),":",dictSource[(Y,X)])
             X+=1
         Y+=1
     return dictSource
@@ -194,17 +231,22 @@ def BuildMVC(dictEdgesSource):
 # Funzione che aggiunge ad ogni px dell'edge la differenza di intensitá con il px "sotto" del target patch
 def BuildDiffs(dictEdgesSource):
     for edge in dictEdgesSource:
+        Y,X = edge
         targetY = edge[0] + offsetY
         targetX = edge[1] + offsetX
-        targetRGB = target[targetY][targetX]
+        targetRGB = tuple(target[targetY][targetX])
 
         # TODO: Controllare che succede quando la differenza causa un numero negativo
         # Converto in int() per problemi di overflow: i px vengono salvati con valori fino a 255, ma quando vado a fare le differenze potrebbero esserci valori negativi (?)
-        RSource, GSource, BSource = int(dictEdgesSource[edge][0][0]), int(dictEdgesSource[edge][0][1]), int(dictEdgesSource[edge][0][2])
-        RTarget, GTarget, BTarget = int(targetRGB[0]), int(targetRGB[1]), int(targetRGB[2])
+        # BSource, GSource, RSource = int(dictEdgesSource[edge][0][0]), int(dictEdgesSource[edge][0][1]), int(dictEdgesSource[edge][0][2])
+        # BTarget, GTarget, RTarget = int(targetRGB[0]), int(targetRGB[1]), int(targetRGB[2])
+        BSource, GSource, RSource = img[Y][X][0], img[Y][X][1], img[Y][X][2]
+        BTarget, GTarget, RTarget = target[targetY][targetX][0], target[targetY][targetX][1], target[targetY][targetX][2]
 
         # Calcolo la differenza di intensitá dei px
-        diff = [RTarget - RSource, BTarget - BSource, GTarget - GSource]
+        # diff = [BTarget - BSource, GTarget - GSource, RTarget - RSource]
+        # diff = cv.absdiff(targetRGB, img[edge[0]][edge[1]])
+        diff = cv.add(target[targetY][targetX], -img[Y][X])
 
         # Inserisco il valore di diff ESATTAMENTE nella seconda posizione della lista
         dictEdgesSource[edge].insert(1, diff) # secondo valore in dictEdgesSource é diff
@@ -213,7 +255,8 @@ def BuildDiffs(dictEdgesSource):
 # TODO: Potrebbe essere sbagliato il modo in cui viene calcolato
 # Funzione che calcola il valore dell'interpolatore per un px dato
 def Interpolant(px, dictEdgesSource, dictSource, listEdges):
-    R = [0,0,0] # Valore dell'interpolatore per tutti e 3 i canali (R,G,B)
+    # R = [0,0,0] # Valore dell'interpolatore per tutti e 3 i canali (R,G,B)
+    R = np.array([0,0,0], dtype=np.uint8)
 
     # Interpolatore va calcolato considerando tutti i px dell'edge
     for edge in dictEdgesSource:
@@ -233,21 +276,48 @@ def Interpolant(px, dictEdgesSource, dictSource, listEdges):
 def Clone(dictSource, listEdges, dictEdgesSource):
     # Loop su ogni px del source patch
     for px in dictSource:
+        Y = px[0]
+        X = px[1]
+        # TODO: Questo if non ha senso, sto facendo un loop sui px interni
         # Controlla se il px appartiene all'edge perché i px dell'edge vengono calcolati in modo diverso
         if not px in listEdges:
             # Viene calcola il valore dell'interpolatore
             R = Interpolant(px, dictEdgesSource, dictSource, listEdges)
-        else:
-            R = [0,0,0]
-            for edge in listEdges:
-                R[0] += dictEdgesSource[edge][0][0]
-                R[1] += dictEdgesSource[edge][0][1]
-                R[2] += dictEdgesSource[edge][0][2]
+            # n0, n1, n2 = False, False, False
+            # if R[0] < 0:
+            #     n0 = True
+            # if R[1] <0:
+            #     n1 = True
+            # if R[2] <0:
+            #     n2 = True
 
+            # R = [R[0]%255,R[1]%255,R[1]%255]
+            # if n0:
+            #     R[0] = R[0] * (-1)
+            # if n1:
+            #     R[1] = R[1] * (-1)
+            # if n2:
+            #     R[2] = R[2] * (-1)
+
+            # if px == (2,2):
+            #     print(R[0], R[1], R[2])
         # Valore della nuova intensitá
-        newInt = [(dictSource[px][0][0] + R[0])%255, (dictSource[px][0][1] + R[1])%255, (dictSource[px][0][2] + R[2])%255]
+        # newInt = [(dictSource[px][0][0] + R[0])%255, (dictSource[px][0][1] + R[1])%255, (dictSource[px][0][2] + R[2])%255]
+        newInt = cv.add(img[Y][X], R)
+        # newInt = [cv.add(dictSource[px][0][0], R[0]). cv.add(dictSource[px][0][1], R[1]), cv.add(dictSource[px][0][2] , R[2])]
         # Sostituisce l'intensitá del px target con il nuovo valore calcolato
-        target[px[0] + offsetY][px[1] + offsetX] = newInt
+        # target[px[0] + offsetY][px[1] + offsetX] = newInt
+        target.itemset((px[0] + offsetY, px[1] + offsetX, 0), newInt[0])
+        target.itemset((px[0] + offsetY, px[1] + offsetX, 1), newInt[1])
+        target.itemset((px[0] + offsetY, px[1] + offsetX, 2), newInt[2])
+    
+    # Loop per modificare gli edge
+    for edge in listEdges:
+        edgeDiff = dictEdgesSource[edge][1]
+        newInt = [dictEdgesSource[edge][0][0] + edgeDiff[0], dictEdgesSource[edge][0][1] + edgeDiff[1], dictEdgesSource[edge][0][2] + edgeDiff[2]]
+        target.itemset((edge[0] + offsetY, edge[1] + offsetX, 0), newInt[0])
+        target.itemset((edge[0] + offsetY, edge[1] + offsetX, 1), newInt[1])
+        target.itemset((edge[0] + offsetY, edge[1] + offsetX, 2), newInt[2])
 
 # Crea il dict con tutti i px edge
 dictEdgesSource = BuildEdge()
@@ -260,12 +330,15 @@ dictEdgesSource = BuildEdgeAdiacent(dictEdgesSource, listEdges)
 
 # Costruisce dict con pixel del source con intensitá e mylamdas
 dictSource = BuildMVC(dictEdgesSource)
-
 # Calcola le diff sull'edge
 BuildDiffs(dictEdgesSource)
 
 # Clona il source patch sul target
 Clone(dictSource, listEdges, dictEdgesSource)
+# print(dictSource[(2,2)])
+
+# for e in listEdges:
+#     img[e[0]][e[1]] = (123,123,-64)
 
 cv.imshow("Image",img)
 cv.resizeWindow("Image", 150,150)
